@@ -15,8 +15,8 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 HF_API_TOKEN = os.getenv("HF_API_TOKEN")
 HF_API_URL = "https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-Instruct-v0.1"
 
-# 白名單使用者 LINE ID（你可以換成自己的）
-ALLOWED_USER_IDS = ["你的LINE使用者ID"]  # TODO: 請更換為你的實際 LINE 使用者 ID
+# ✅ 初始為空白，會自動從第一次使用者填入
+ALLOWED_USER_IDS = []
 
 app = Flask(__name__)
 
@@ -39,7 +39,14 @@ def callback():
 def handle_message(event):
     user_id = event.source.user_id
     user_msg = event.message.text
+    print(f"📌 使用者 ID：{user_id}")
     print(f"👤 使用者傳來：{user_msg}")
+
+    # 自動設定第一次使用者 ID
+    global ALLOWED_USER_IDS
+    if not ALLOWED_USER_IDS:
+        ALLOWED_USER_IDS = [user_id]
+        print("✅ 已自動設定使用者 ID 為白名單")
 
     # 白名單驗證
     if user_id not in ALLOWED_USER_IDS:
