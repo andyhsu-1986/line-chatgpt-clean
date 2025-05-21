@@ -5,7 +5,7 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import openai
 import os
 
-# ✅ 改用環境變數讀取機密金鑰（不要寫在程式裡）
+# ✅ 使用環境變數讀取金鑰
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -21,9 +21,12 @@ def callback():
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
 
+    print("🟢 收到 LINE 的 webhook 請求")
+
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
+        print("🔴 webhook 驗證失敗")
         abort(400)
 
     return 'OK'
@@ -31,20 +34,28 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_msg = event.message.text
+    print(f"👤 使用者傳來：{user_msg}")
 
-    # 傳送使用者訊息給 ChatGPT
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": user_msg}]
-    )
-    reply = response.choices[0].message['content'].strip()
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": user_msg}]
+        )
+        reply = response.choices[0].message['content'].strip()
+        print(f"🤖 ChatGPT 回覆：{reply}")
 
-    # 將回覆傳回給 LINE 使用者
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=reply)
-    )
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=reply)
+        )
+    except Exception as e:
+        print(f"⚠️ ChatGPT API 發生錯誤：{str(e)}")
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text="抱歉，回覆發生錯誤！")
+        )
 
 if __name__ == "__main__":
     app.run(port=5000)
+
 
