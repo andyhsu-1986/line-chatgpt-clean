@@ -12,7 +12,7 @@ line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 # Claude Proxy API（穩定版）
-CLAUDE_PROXY_URL = "https://claude-proxy-test.fly.dev/ask"
+CLAUDE_PROXY_URL = "https://claude.onrenderapi.com/ask"
 
 # 白名單（自動加入第一位使用者）
 ALLOWED_USER_IDS = []
