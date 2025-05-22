@@ -11,10 +11,10 @@ LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# Claude 中繼 API（我方提供）
+# Claude Proxy API（穩定版）
 CLAUDE_PROXY_URL = "https://claude-gateway.onrender.com/ask"
 
-# 白名單（第一次使用者自動加入）
+# 白名單（自動加入第一位使用者）
 ALLOWED_USER_IDS = []
 
 app = Flask(__name__)
@@ -55,12 +55,16 @@ def handle_text(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=help_msg))
         return
 
-    # 呼叫 Claude 中繼 API
+    # 呼叫 Claude Proxy API
     try:
         payload = {"prompt": user_msg}
-        response = requests.post(CLAUDE_PROXY_URL, json=payload)
-        result = response.json()
-        reply = result.get("reply", "Claude 沒有回應，請稍後再試。")
+        response = requests.post(CLAUDE_PROXY_URL, json=payload, timeout=10)
+        try:
+            result = response.json()
+            reply = result.get("reply", "Claude 沒有回應，請稍後再試。")
+        except Exception as json_error:
+            print(f"⚠️ JSON 解析錯誤：{json_error}")
+            reply = "⚠️ Claude 回應格式錯誤，請稍後再試。"
         print(f"🤖 Claude 回覆：{reply}")
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
     except Exception as e:
