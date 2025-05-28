@@ -15,13 +15,11 @@ line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 # Claude Proxy URL
-CLAUDE_API_URL = os.getenv("CLAUDE_API_URL", "https://claude-proxy.zeabur.app/claude")
+CLAUDE_API_URL = "https://claude-gateway.fly.dev/ask"  # ✅ 已驗證可用 proxy
 
 # Gemini config
 GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=GEMINI_API_KEY)
-
-# 使用新版 Gemini 模型（v1）
 gemini_model = genai.GenerativeModel(model_name="models/gemini-pro")
 
 @app.route("/callback", methods=["POST"])
