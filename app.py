@@ -4,66 +4,65 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import requests
 import os
-import google.generativeai as genai
 
 app = Flask(__name__)
 
-# LINE credentials
+# 環境變數
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
+
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# Claude Proxy URL
-CLAUDE_API_URL = "https://claude-gateway.fly.dev/ask"  # ✅ 已驗證可用 proxy
+def ask_openrouter(message):
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://linebot.ai",  # 可隨意填寫
+        "X-Title": "LINE Claude Gemini"
+    }
 
-# Gemini config
-GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel(model_name="models/gemini-pro")
+    payload = {
+        "model": "anthropic/claude-3-haiku",
+        "messages": [{"role": "user", "content": message}],
+        "temperature": 0.7,
+    }
 
-@app.route("/callback", methods=["POST"])
+    try:
+        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=20)
+        if response.status_code == 200:
+            reply = response.json()['choices'][0]['message']['content']
+            return reply.strip() + "\n\n（模型：Claude 3）"
+    except Exception:
+        pass
+
+    # fallback: Gemini
+    payload["model"] = "google/gemini-pro"
+    try:
+        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=20)
+        if response.status_code == 200:
+            reply = response.json()['choices'][0]['message']['content']
+            return reply.strip() + "\n\n（模型：Gemini Pro）"
+    except Exception:
+        return "⚠️ 目前 AI 模型暫時無法回應，請稍後再試。"
+
+@app.route("/callback", methods=['POST'])
 def callback():
-    signature = request.headers["X-Line-Signature"]
+    signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
 
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
         abort(400)
-    return "OK"
+
+    return 'OK'
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    user_message = event.message.text
-    user_id = event.source.user_id
-    print(f"🟢 收到 LINE 的 webhook 請求\n📌 使用者 ID：{user_id}\n👤 使用者傳來：{user_message}")
-
-    reply = ""
-    # Claude 優先
-    try:
-        response = requests.post(CLAUDE_API_URL, json={"prompt": user_message}, timeout=15)
-        response.raise_for_status()
-        result = response.json()
-        answer = result.get("completion", "").strip()
-        if not answer:
-            raise ValueError("Claude 回應為空")
-        print(f"🤖 Claude 回應：{answer}")
-        reply = f"🤖 Claude 回應：{answer}"
-
-    except Exception as e:
-        print(f"Claude 失敗：{e}")
-
-        # Gemini 備援
-        try:
-            result = gemini_model.generate_content(user_message)
-            answer = result.text.strip()
-            print(f"🧠 Gemini 回應：{answer}")
-            reply = f"🧠 Gemini 回應：{answer}"
-        except Exception as ge:
-            print(f"Gemini 失敗：{ge}")
-            reply = "⚠️ Claude 和 Gemini 都無法回應，請稍後再試。"
-
+    user_input = event.message.text
+    reply = ask_openrouter(user_input)
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
 if __name__ == "__main__":
