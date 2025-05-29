@@ -24,18 +24,16 @@ if not LINE_CHANNEL_SECRET:
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# Claude Proxy 設定
+# Claude Proxy 設定（修正為穩定網址）
 CLAUDE_API_URL = os.getenv("CLAUDE_API_URL")
 
-# Gemini 設定
+# Gemini 設定（強制使用 v1 版本）
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
     print("錯誤：GOOGLE_API_KEY 未設定。")
-    # 在生產環境中，你可能希望拋出異常或禁用 Gemini。
-    # 目前，我們只會列印錯誤並繼續。
     genai_available = False
 else:
-    genai.configure(api_key=GOOGLE_API_KEY)
+    genai.configure(api_key=GOOGLE_API_KEY, transport="rest", api_version="v1")
     genai_available = True
 
 @app.route("/callback", methods=['POST'])
@@ -49,7 +47,7 @@ def callback():
         abort(400)
     except Exception as e:
         print(f"處理 webhook 時發生意外錯誤：{e}")
-        abort(500) # 內部伺服器錯誤
+        abort(500)
     return 'OK'
 
 @handler.add(MessageEvent, message=TextMessage)
@@ -66,10 +64,10 @@ def handle_message(event):
     # Claude 優先
     if CLAUDE_API_URL:
         try:
-            response = requests.post(CLAUDE_API_URL, json={"query": user_input}, timeout=15)
+            response = requests.post(CLAUDE_API_URL, json={"prompt": user_input}, timeout=15)
             if response.status_code == 200:
-                reply = response.json().get("reply", "").strip() # .strip() 用於移除開頭/結尾的空白字元
-                if not reply: # 如果 reply 在移除空白後仍為空，則視為失敗。
+                reply = response.json().get("reply", "").strip()
+                if not reply:
                     print("Claude 回傳了空的回覆。")
             else:
                 print(f"Claude 失敗：HTTP 狀態碼 {response.status_code}，回覆：{response.text}")
@@ -82,36 +80,21 @@ def handle_message(event):
     else:
         print("CLAUDE_API_URL 未設定。跳過 Claude。")
 
-
-    # Claude 失敗時，fallback 到 Gemini
+    # fallback 到 Gemini
     if not reply and genai_available:
         try:
-            model = genai.GenerativeModel('models/gemini-pro')
+            model = genai.GenerativeModel('gemini-pro')
             chat = model.start_chat()
             response = chat.send_message(user_input)
-            reply = response.text.strip() # .strip() 用於移除開頭/結尾的空白字元
-            if not reply: # 如果 reply 在移除空白後仍為空，則視為失敗。
+            reply = response.text.strip()
+            if not reply:
                 print("Gemini 回傳了空的回覆。")
         except Exception as e:
             print(f"Gemini 失敗：{e}")
 
-    # 如果 Claude 和 Gemini 都沒回應，就給預設錯誤訊息
     if not reply:
         reply = error_message
 
     print("🤖 回覆：", reply)
     try:
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
-    except LineBotApiError as e:
-        print(f"LINE Bot API 錯誤：{e}")
-        # 這個捕獲是專門針對「May not be empty」錯誤，
-        # 但也捕獲其他 API 錯誤。
-        # 如果這裡的回覆為空，表示之前的檢查失敗了。
-        # 我們可以記錄更多詳細資訊，或者如果可能的話嘗試發送一個非常基本的錯誤訊息。
-        # 目前，我們只會記錄並假設使用者不會收到回覆。
-    except Exception as e:
-        print(f"回覆 LINE 時發生意外錯誤：{e}")
-
-
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=os.environ.get('PORT', 5000)) # 綁定到 0.0.0.0 並使用 PORT 環境變數
+        line_bot_api.reply_message(event.reply_token, TextSendMess
